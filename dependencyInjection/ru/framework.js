@@ -1,57 +1,64 @@
-// Типы библиотек
-var libraries = {
-  console:     'global',
-  setTimeout:  'global',
-  setInterval: 'global',
-  fs:          'native',
-  vm:          'native',
-  path:        'native',
-  util:        'native',
-  ncp:         'module',
-  colors:      'module',
-  mkdirp:      'module',
+// Файл, демонстрирующий то, как фреймворк создает среду (песочницу) для
+// исполнения приложения, загружает приложение, передает ему песочницу в
+// качестве глобального контекста и получает ссылу на экспортируемый
+// приложением интерфейс. Читайте README.md в нем задания.
+
+// Фреймворк может явно зависеть от библиотек через dependency lookup
+var fs = require('fs'),
+    vm = require('vm'),
+    util = require('util');
+    // process = require('process');
+
+
+// Читаем исходный код приложения из файла
+var fileName = process.argv[2];
+var d = process.argv[3];
+var m = process.argv[4];
+// Чоздаем контекст-песочницу, которая станет глобальным контекстом приложения
+var context = { 
+	module: {}, 
+	console: clone(console), 
+	setTimeout: setTimeout, 
+	setInterval: setInterval,
+	clearInterval: clearInterval,
+	require:req,
+	delay: d,
+	message: m
 };
 
-// Ссылки на метаданные загруженных библиотек
-var loaded = {};
-
-// Ссылки на загруженные библиотеки
-var api = {};
-
-// Загружаем два системных модуля и после них основное приложение
-['fs', 'vm', 'application'].forEach(loadLibrary);
-
-// Функция загрузчик
-function loadLibrary(name, parent) {
-  if (typeof(parent) !== 'object') parent = { name: 'framework' };
-  console.log('Loading dependency: ' + name + ' into ' + parent.name);
-  var mod = {};
-  loaded[name] = mod;
-  mod.name = name;
-  mod.type = libraries[name];
-  if (mod.type === 'global') {
-    mod.interface = global[name];
-    api[name] = mod.interface;
-  } else if (mod.type === 'native' || mod.type === 'module') {
-    mod.interface = require(name);
-    api[name] = mod.interface;
-  } else {
-    mod.type = 'app';
-    mod.context = { module: {} };
-    mod.context.global = mod.context;
-    mod.sandbox = api.vm.createContext(mod.context);
-    mod.config = require('./' + name + '.json');
-    mod.fileName = './' + name + '.js';
-    api.fs.readFile(mod.fileName, function(err, src) {
-      mod.script = api.vm.createScript(src, mod.fileName);
-      mod.script.runInNewContext(mod.sandbox);
-      mod.interface = mod.sandbox.exports;
-      api[name] = mod.interface;
-      if (mod.config.api) {
-        mod.config.api.forEach(function(item) {
-          loadLibrary(item, mod);
-        });
-      }
-    });
-  }
+function req(s){
+	context.console.log(s);
+	return require(s);
 }
+
+context.console.log = function(s){
+	var res = fileName+" "+new Date() +" "+s;
+	console.log(res);
+	fs.appendFile("test.txt",res+"\n", function(err){
+		if(err) console.log(err)
+		else console.log("File is written");
+	});
+}
+
+function clone(obj){
+	var res = [];
+	for(var k in obj) res[k] = obj[k];
+	return res;
+}
+
+context.global = context;
+
+var sandbox = vm.createContext(context);
+
+fs.readFile(fileName, function(err, src) {
+  // Тут нужно обработать ошибки
+  
+  // Запускаем код приложения в песочнице
+  var script = vm.createScript(src, fileName);
+  script.runInNewContext(sandbox);
+  // console.dir(sandbox.module.exports.toString())
+  sandbox.module.exports();
+  
+  // Забираем ссылку из sandbox.module.exports, можем ее исполнить,
+  // сохранить в кеш, вывести на экран исходный код приложения и т.д.
+});
